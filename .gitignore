@@ -1,0 +1,41 @@
+# 模型和数据文件
+*.model
+*.pkl
+*.h5
+*.pb
+*.onnx
+*.txt.txt
+*.keras
+*.pt
+dist/
+downloads/
+models/
+data/
+output/
+logs/
+
+# Python缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 环境文件
+.env
+.venv
+.venv_new/
+env/
+venv/
+ENV/
+
+# IDE文件
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 系统文件
+.DS_Store
+Thumbs.db 
