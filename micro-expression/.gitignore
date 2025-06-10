@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.pth
+*.h5
+*.ckpt
+*.pt
+*.pth.tar
+*.tmp
+*.bak
+.DS_Store
+logs/
+stage1_cnn_output/
+stage2_lstm_output/
+features/ 

@@ -1,0 +1,65 @@
+# config_cnn_stage1.yaml: Configuration for Stage 1 CNN Training
+
+experiment_name: casme2_cnn_stage1_balanced # Experiment name for logging and outputs
+
+# --- Data Settings ---
+data:
+  data_path: "D:/pycharm2/PythonProject2/18/data/raw/CASME II/" # Correct path to RAW images based on user input
+  metadata_file: "D:/pycharm2/PythonProject2/18/data/raw/CASME II/CASME2_Metadata.xlsx" # Correct absolute path to metadata within the raw data dir
+  label_column: "Estimated Emotion" # Column name for emotion labels in metadata
+  apex_column: "ApexFrame"          # Column name for apex frame in metadata
+  split_ratio: [0.7, 0.1, 0.2]     # Train, Validation, Test split ratios (applied to frames)
+  random_seed: 42
+  image_size: [128, 128]           # Target image size (height, width) - matching original project
+
+# --- Model Settings ---
+# Model type (CNNModel) is hardcoded in train_cnn.py
+model:
+  # num_classes is automatically determined from utils.NUM_CLASSES (7)
+  input_channels: 1 # Grayscale input
+
+# --- Training Settings ---
+training:
+  epochs: 30                     # Number of training epochs (like original)
+  batch_size: 32                  # Batch size (like original)
+  optimizer: "AdamW"              # Optimizer ('Adam', 'AdamW', 'SGD')
+  learning_rate: 0.0001           # Initial learning rate (like original)
+  weight_decay: 0.01              # Weight decay (especially for AdamW)
+  # momentum: 0.9                # Needed if optimizer is SGD
+  scheduler: "ReduceLROnPlateau"  # Learning rate scheduler ('ReduceLROnPlateau', 'CosineAnnealingLR', 'StepLR', None)
+  scheduler_params:
+    factor: 0.1                 # For ReduceLROnPlateau: Factor by which LR is reduced (like original)
+    patience: 3                 # For ReduceLROnPlateau: Patience epochs (original used 2)
+    min_lr: 1e-7                # For ReduceLROnPlateau: Minimum learning rate
+    # T_max: 30                  # For CosineAnnealingLR: Max iterations (usually epochs)
+    # step_size: 10             # For StepLR: Decay period
+    # gamma: 0.1                # For StepLR: Decay factor
+  criterion: "CrossEntropyLoss"     # Loss function
+  gradient_clip_val: 0.0          # Gradient clipping value (0 means no clipping)
+  early_stopping_patience: 5      # Patience for early stopping (like original)
+  use_mixed_precision: True       # Use AMP if available
+  accumulate_grad_batches: 1      # Number of steps for gradient accumulation
+
+# --- Augmentation Settings ---
+augmentation:
+  use_augmentations: True # Controls whether create_spatial_transforms applies training augmentations
+  # Specific augmentation parameters are defined within create_spatial_transforms in transforms.py
+
+# --- Balancing Settings ---
+balancing:
+  use_weighted_sampler: True       # Enable WeightedRandomSampler for training loader
+  boost_minority_classes: True    # Apply extra weight boost to minority classes (fear, sadness)
+  oversample_factor: 3.0          # Factor to multiply weights of minority classes (increase emphasis)
+  # minority_percentile: 25      # Alternative way to define minority classes
+
+# --- Logging & Output ---
+logging:
+  log_dir: "18_2/logs"                   # Directory for log files
+  output_dir: "18_2/stage1_cnn_output"   # Base directory for outputs (checkpoints, plots)
+  # Checkpoint path is constructed automatically inside the script
+
+# --- Environment Settings ---
+environment:
+  num_workers: 4                  # Number of workers for DataLoader
+  pin_memory: True               # Use pinned memory for faster data transfer to GPU
+  device: "auto"                  # "cuda", "cpu", or "auto" 
