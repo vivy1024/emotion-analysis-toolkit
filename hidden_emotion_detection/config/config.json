@@ -1,0 +1,97 @@
+{
+    "system": {
+        "debug_mode": false,
+        "log_level": "DEBUG",
+        "data_dir": "data",
+        "models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models",
+        "video_source": 0,
+        "gpu_enabled": true,
+        "multithreading": true,
+        "thread_pool_size": 4,
+        "video_resolution": [640, 480],
+        "frame_rate": 100
+    },
+    "openface": {
+        "path": "D:/pycharm2/PythonProject2/18/OpenFace_2.2.0_win_x64"
+    },
+    "face": {
+        "detection_method": "mediapipe",
+        "upsample_times": 1,
+        "tracking_enabled": true,
+        "min_face_size": 30,
+        "detection_interval": 1,
+        "confidence_threshold": 0.45,
+        "use_landmarks": true,
+        "landmark_method": "dlib",
+        "align_faces": true
+    },
+    "macro": {
+        "enabled": true,
+        "model_path": "D:/pycharm2/PythonProject2/enhance_hidden/models/macro.pt",
+        "threshold": 0.5,
+        "gpu_acceleration": true,
+        "dynamic_adjustment": true,
+        "batch_size": 1
+    },
+    "micro": {
+        "enabled": true,
+        "cnn_model_path": "D:/pycharm2/PythonProject2/enhance_hidden/models/casme2_cnn_stage1_balanced_cnn_best.pth",
+        "lstm_models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models/lstm_ensemble_models",
+        "cnn_input_size": [128, 128],
+        "cnn_input_channels": 1,
+        "cnn_feature_dim": 256,
+        "lstm_sequence_length": 64,
+        "lstm_hidden_size": 256,
+        "lstm_num_layers": 1,
+        "lstm_use_attention": false,
+        "lstm_dropout": 0.3,
+        "fc_dropout": 0.5,
+        "detection_interval": 10,
+        "threshold": 0.4,
+        "gpu_acceleration": true,
+        "use_optical_flow": false,
+        "class_weights": { 
+            "0": 1.683508, 
+            "1": 7.072849, 
+            "2": 3.490520, 
+            "3": 5.754319, 
+            "4": 4.119978 
+        },
+        "class_thresholds": {
+            "0": 0.471985, 
+            "1": 0.150292, 
+            "2": 0.055551, 
+            "3": 0.298350, 
+            "4": 0.505421
+        }
+    },
+    "au": {
+        "enabled": true,
+        "models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models/AU_predictors",
+        "au_model_index": "AU_all_static.txt",
+        "au_model": "jaanet",
+        "threshold": 1.0,
+        "min_intensity": 0.05,
+        "use_real_detector": true,
+        "gpu_acceleration": true,
+        "update_interval": 15
+    },
+    "hidden": {
+        "enabled": false,
+        "conflict_threshold": 0.6,
+        "au_weight": 0.3,
+        "window_size": 10,
+        "temporal_smoothing": true,
+        "smoothing_factor": 0.7
+    },
+    "ui": {
+        "theme": "dark",
+        "show_debugging": false,
+        "show_confidence": true,
+        "show_au_details": false,
+        "show_charts": true,
+        "chart_history_length": 50,
+        "fullscreen": false,
+        "display_mode": "combined"
+    }
+} 

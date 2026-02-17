@@ -1,0 +1,34 @@
+# config_feature_extraction.yaml: Configuration for extracting features using Stage 1 CNN
+
+# --- Input Data ---
+data:
+  # Use the SAME raw data path and metadata as Stage 1 training
+  data_path: "D:/pycharm2/PythonProject2/18/data/raw/CASME II/" # Path to RAW image data
+  metadata_file: "D:/pycharm2/PythonProject2/18/data/raw/CASME II/CASME2_Metadata.xlsx" # Absolute path to metadata
+  label_column: "Estimated Emotion" # Ensure consistency with Stage 1
+  apex_column: "ApexFrame"          # Ensure consistency with Stage 1
+  image_size: [128, 128]           # Must match Stage 1 image size
+  # sequence_length: null # Let the dataset determine sequence length based on Onset/Offset
+
+# --- Stage 1 Model ---   # Should match the model used in Stage 1
+cnn_model:
+  checkpoint_path: "18_2/stage1_cnn_output/checkpoints/casme2_cnn_stage1_balanced_cnn_best.pth" # Path to the trained Stage 1 CNN model state_dict
+  input_channels: 1
+  # num_classes: 7 # Should match the classes from Stage 1 (defined in utils.py)
+
+# --- Output ---        # Where to save the extracted features
+output:
+  feature_file: "18_2/features/casme2_cnn_features_augmented.pt"
+  output_dir: "18_2/features" # Directory for the output file
+
+# --- Environment ---    # Settings for running the extraction
+environment:
+  device: "auto" # "cuda", "cpu", or "auto"
+  num_workers: 0 # Set to 0 for easier debugging, especially on Windows with multiprocessing issues. Can increase later.
+  batch_size: 4 # Adjust based on available GPU memory. Sequences can take more memory. (Reduced from 16 due to OOM)
+
+# --- Logging ---        # Settings for logging progress
+logging:
+  log_dir: "18_2/logs"
+  experiment_name: "feature_extraction_augmented"
+ 

@@ -192,3 +192,36 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# === 项目特定 ===
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+.trae/
+.claude/
+
+# 虚拟环境
+.venv_new/
+
+# 模型权重和训练输出
+*.pth
+*.pt
+stage2_lstm_output/
+stage1_cnn_output/
+logs/
+
+# 大文件/二进制
+*.png
+*.jpg
+*.jpeg
+
+# 嵌套 git 仓库
+emotion-analysis-toolkit/
+
+# 历史遗留
+18_2/
+backups/
+fer2013model/
+._CursorPro-Windows

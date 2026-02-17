@@ -1,0 +1,86 @@
+# config_lstm_stage2.yaml: Configuration for Stage 2 LSTM Training using Pre-extracted Features
+
+experiment_name: casme2_lstm_stage2_crop_repeat_6class # 更新实验名 (6 class)
+
+# --- Input Data (Extracted Features) ---
+data:
+  feature_file: "18_2/features/casme2_cnn_features_balanced.pt" 
+  # 修改：target_sequence_length 现在代表裁剪的子序列长度
+  target_sequence_length: 32 
+  split_ratio: [0.8, 0.2] 
+  random_seed: 42
+  # 新增：定义每个类别的重复采样次数 (显著增加少数类)
+  repeats_per_label:
+    0: 2      # happiness (new label 0)
+    1: 2      # disgust (new label 1)
+    2: 15     # repression (new label 2)
+    3: 3      # surprise (new label 3)
+    # 4: X     # fear (removed)
+    5: 20     # sadness (new label 4)
+    6: 1      # others (new label 5)
+
+# --- Model Settings (LSTM Part Only) ---
+model:
+  cnn_feature_dim: 256 
+  lstm_hidden_size: 128 
+  lstm_num_layers: 1 
+  use_attention: false # 禁用 Attention (效果不佳)
+  # 保留上次调整的较强正则化
+  dropout_lstm: 0.4 
+  dropout_fc: 0.6 
+
+# --- Training Settings ---
+training:
+  k_folds: 5 # 新增：设置交叉验证折数 (例如 5 或 10)
+  max_epochs: 100  # Keep the max, early stopping might finish sooner
+  batch_size: 32 
+  optimizer: "AdamW"
+  # Lower initial learning rate for potentially smoother convergence
+  learning_rate: 0.0001 
+  # 保留上次调整的较强正则化
+  weight_decay: 0.05
+  lr_scheduler: "ReduceLROnPlateau"
+  # Increase patience slightly for the scheduler
+  lr_patience: 7 
+  lr_factor: 0.2   # Factor for LR scheduler
+  criterion: "CrossEntropyLoss" 
+  gradient_clip_val: 1.0 
+  # Keep the original early stopping patience from config
+  # early_stopping_patience: 15 # This refers to ReduceLROnPlateau patience now, remove duplicate
+  use_mixed_precision: True
+  # --- Early Stopping Configuration ---
+  early_stopping:
+    enabled: true
+    metric: 'val_loss' # Monitor validation loss ('val_loss' or 'val_accuracy')
+    patience: 15       # How many epochs to wait for improvement
+    min_delta: 0.001   # Minimum change to qualify as an improvement (for loss)
+    mode: 'min'        # 'min' for loss, 'max' for accuracy
+
+# --- Balancing Settings ---
+balancing:
+  # 使用 WeightedRandomSampler 处理增强后的训练集不平衡
+  use_weighted_sampler: True # 明确启用 Sampler
+  boost_minority_classes: False # 移除，因为重复采样已处理
+  # oversample_factor: ... # 移除
+  use_weighted_loss: False # 通常不同时使用 Sampler 和 Weighted Loss
+  repeats_per_label:
+    0: 2      # happiness
+    1: 2      # disgust
+    2: 15     # repression
+    3: 3      # surprise
+    # 4: X     # fear (removed)
+    # Reduce repeats for sadness to potentially improve precision
+    5: 15     # sadness (from 20)
+    6: 1      # others
+  
+# --- Logging & Output ---
+logging:
+  log_dir: "18_2/logs"
+  output_dir: "18_2/stage2_lstm_output"
+  # Checkpoint path is constructed automatically
+
+# --- Environment Settings ---
+environment:
+  num_workers: 0 
+  pin_memory: True
+  device: "auto" 
