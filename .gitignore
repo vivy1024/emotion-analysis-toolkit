@@ -208,6 +208,11 @@ cython_debug/
 # 模型权重和训练输出
 *.pth
 *.pt
+*.pkl
+*.dat
+*.tflite
+*.h5
+*.onnx
 stage2_lstm_output/
 stage1_cnn_output/
 logs/
