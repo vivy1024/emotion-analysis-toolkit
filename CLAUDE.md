@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**版本**: v2.0.0 | **更新**: 2026-02-18 | **语言**: 始终使用中文回复
+**版本**: v2.2.0 | **更新**: 2026-02-18 | **语言**: 始终使用中文回复
 
 **项目**: 情绪分析工具集（Emotion Analysis Toolkit）| **开发者**: 薛小川
 
@@ -106,7 +106,7 @@ pip install -r macro_expression/requirements.txt
 ### 规则1：代码约定
 - 注释和文档使用中文，代码标识符英文
 - 各子项目使用相对导入，必须 `-m` 方式运行
-- 模型权重（`.pth`/`.pt`）、训练输出不纳入 git
+- 模型权重（`.pth`/`.pt`/`.pkl`/`.dat`/`.tflite`）、训练输出不纳入 git
 
 ### 规则2：模型路径
 配置在 `hidden_emotion_detection/config/config.json`，使用绝对路径指向 `hidden_emotion_detection/models/`。部署新环境时需修改。
@@ -121,6 +121,89 @@ pip install -r macro_expression/requirements.txt
 |---------|------------|
 | 当前项目 | `vivy1024/emotion-analysis-toolkit` |
 
+### 规则5：复杂任务必须使用 Agent Teams
+
+触发条件：跨项目修改 | ≥4小时工作量 | 架构迁移 | 全量测试+部署
+
+```
+1. 读取 .claude/team-prompt.md
+2. TeamCreate 创建正式团队（必须！）
+3. Task spawn agent，指定 team_name
+4. 汇总 → 测试 → 文档 → Git提交
+5. TeamDelete 清理
+```
+
+❌ 禁止直接 Task spawn 不先 TeamCreate（监控工具无法追踪、agent间无法通信）
+❌ 禁止团队完成后不 TeamDelete 清理
+
+### 规则6：使用 aivectormemory 持久化记忆
+
+每次对话必须使用 `aivectormemory` MCP 工具：
+- **对话开始**：`recall` 查询相关记忆，恢复上下文
+- **重要决策/发现**：`remember` 及时存储（不要等对话结束）
+- **对话结束前**：`auto_save` 保存本次决策、修改、踩坑、待办
+- **用户偏好**：存入 `user` 作用域（跨项目生效）
+- **项目状态**：存入 `project` 作用域
+
+❌ 禁止只在对话结束时才存记忆（中途崩溃/interrupted 会丢失）
+❌ 禁止忽略 recall 结果（上次对话的记忆是重要上下文）
+
+### 规则7：等待用户时必须暂停输出
+
+当需要等待用户操作时：
+- ✅ 说明等待什么，然后**停止输出**，不要持续发送消息
+- ✅ 收到旧的 `task-notification` 时，**完全忽略，不回复任何内容**
+- ❌ 禁止对每个旧后台任务通知都回复"旧通知，忽略"等消息
+- ❌ 禁止在等待期间循环发送消息（会导致上下文膨胀、compact失败）
+
+### 规则8：Windows Bash 后台命令防风暴
+
+Windows 环境下 bash 命令可能全部以后台模式运行，导致无法直接获取输出。
+
+**正确做法**：
+```bash
+# 1. 命令输出重定向到文件
+python -m pytest tests/ > _output.txt 2>&1
+# 2. 用 Read 工具读取文件（不用 bash cat）
+```
+
+**禁止**：
+- ❌ 使用 `sleep N && cat file` 链式命令等待输出（会形成后台任务雪崩）
+- ❌ 反复 spawn 新 bash 命令读取上一个命令的输出
+- ❌ Agent 内部超过 3 次 bash 重试后仍继续（应改用 Read 工具或报告失败）
+
+---
+
+## 🚫 严格禁止
+
+- ❌ 修改代码后不更新文档/CHANGELOG/不 Git 提交
+- ❌ 使用 curl 命令（Windows 兼容问题，用 Chrome DevTools）
+
+---
+
+## Git 工作流
+
+### 提交格式
+
+`type(scope): description`
+
+常用类型：feat(新功能)、fix(修复)、docs(文档)、refactor(重构)、perf(性能)
+
+示例：
+```bash
+git commit -m "feat(micro): 添加LOSO评估协议"
+git commit -m "fix(au): 修复SVM模型加载路径"
+git commit -m "docs(changelog): 记录架构重构变更"
+```
+
+### 分支命名（可选）
+
+个人开发通常在 main 分支，需要时创建：
+```bash
+git checkout -b feature/loso-evaluation  # 大功能
+git checkout -b fix/config-path          # Bug修复
+```
+
 ---
 
 ## 按需加载参考
@@ -130,9 +213,12 @@ pip install -r macro_expression/requirements.txt
 | 系统架构 | `docs/02-核心架构/01-系统架构.md` |
 | 微表情训练 | `docs/03-训练指南/01-微表情训练.md` |
 | 宏表情训练 | `docs/03-训练指南/02-宏表情训练.md` |
+| 微表情领域参考 | `docs/03-训练指南/03-微表情领域参考索引.md` |
+| 数据集申请 | `docs/04-开发指南/02-数据集申请指南.md` |
+| 技术迭代路线 | `docs/04-开发指南/03-技术迭代路线.md` |
 | 开发约定 | `docs/04-开发指南/01-开发约定.md` |
 | 实时检测配置 | `hidden_emotion_detection/config/config.json` |
 
 ---
 
-**维护者**: 薛小川 | **Always respond in Chinese**
+**维护者**: 薛小川 | v2.2.0 | **Always respond in Chinese**
