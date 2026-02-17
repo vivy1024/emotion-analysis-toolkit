@@ -217,11 +217,13 @@ logs/
 *.jpg
 *.jpeg
 
-# 嵌套 git 仓库
+# 嵌套 git 仓库 / 已合并的旧目录
 emotion-analysis-toolkit/
+enhance_hidden/
 
 # 历史遗留
 18_2/
 backups/
 fer2013model/
 ._CursorPro-Windows
+旧有文件/

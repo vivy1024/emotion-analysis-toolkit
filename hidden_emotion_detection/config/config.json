@@ -3,7 +3,7 @@
         "debug_mode": false,
         "log_level": "DEBUG",
         "data_dir": "data",
-        "models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models",
+        "models_dir": "D:/pycharm2/PythonProject2/hidden_emotion_detection/models",
         "video_source": 0,
         "gpu_enabled": true,
         "multithreading": true,
@@ -27,7 +27,7 @@
     },
     "macro": {
         "enabled": true,
-        "model_path": "D:/pycharm2/PythonProject2/enhance_hidden/models/macro.pt",
+        "model_path": "D:/pycharm2/PythonProject2/hidden_emotion_detection/models/macro.pt",
         "threshold": 0.5,
         "gpu_acceleration": true,
         "dynamic_adjustment": true,
@@ -35,8 +35,8 @@
     },
     "micro": {
         "enabled": true,
-        "cnn_model_path": "D:/pycharm2/PythonProject2/enhance_hidden/models/casme2_cnn_stage1_balanced_cnn_best.pth",
-        "lstm_models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models/lstm_ensemble_models",
+        "cnn_model_path": "D:/pycharm2/PythonProject2/hidden_emotion_detection/models/casme2_cnn_stage1_balanced_cnn_best.pth",
+        "lstm_models_dir": "D:/pycharm2/PythonProject2/hidden_emotion_detection/models/lstm_ensemble_models",
         "cnn_input_size": [128, 128],
         "cnn_input_channels": 1,
         "cnn_feature_dim": 256,
@@ -67,7 +67,7 @@
     },
     "au": {
         "enabled": true,
-        "models_dir": "D:/pycharm2/PythonProject2/enhance_hidden/models/AU_predictors",
+        "models_dir": "D:/pycharm2/PythonProject2/hidden_emotion_detection/models/AU_predictors",
         "au_model_index": "AU_all_static.txt",
         "au_model": "jaanet",
         "threshold": 1.0,
