@@ -1,0 +1,68 @@
+# config_lstm_stage2_5class.yaml: Configuration for Final 5-Class LSTM Training
+
+# Use a new experiment name for the 5-class run
+experiment_name: casme2_lstm_stage2_5class_final 
+
+# --- Input Data ---
+data:
+  feature_file: "18_2/features/casme2_cnn_features_balanced.pt" # Assuming same feature file
+  target_sequence_length: 32 
+  split_ratio: [0.8, 0.2] # Keep split ratio, applied after filtering
+  random_seed: 42
+  padding_value: 0.0 
+  # NOTE: Filtering logic for fear(4) AND sadness(5) will be handled in the training script.
+  # The repeats_per_label here corresponds to the *final 5 classes* after remapping.
+
+# --- Model Settings (LSTM Part Only - Using Best HPO Params from Trial 22) ---
+model:
+  cnn_feature_dim: 256 
+  lstm_hidden_size: 256   # From Trial 22
+  lstm_num_layers: 1 
+  use_attention: false 
+  dropout_lstm: 0.627151707302907  # From Trial 22
+  dropout_fc: 0.3745888760454624   # From Trial 22
+
+# --- Training Settings (Using Best HPO Params from Trial 22) ---
+training:
+  k_folds: 5 
+  max_epochs: 100  # Keep max, early stopping will handle actual epochs
+  batch_size: 32 
+  optimizer: "AdamW"
+  learning_rate: 0.0005220511446972325 # From Trial 22
+  weight_decay: 0.026846655717852688  # From Trial 22
+  lr_scheduler: "ReduceLROnPlateau"
+  lr_patience: 7 # Keep previous setting or from Trial 22 if available (using 7)
+  lr_factor: 0.2   
+  criterion: "CrossEntropyLoss" 
+  gradient_clip_val: 1.0 
+  use_mixed_precision: True
+  # --- Early Stopping Configuration (Keep previous settings) ---
+  early_stopping:
+    enabled: true
+    metric: 'val_loss' 
+    patience: 15      
+    min_delta: 0.001   
+    mode: 'min'        
+
+# --- Balancing Settings (Reflecting 5 Classes after remapping) ---
+# Original Labels: 0(hap), 1(dis), 2(rep), 3(sur), 6(oth) -> New Labels: 0, 1, 2, 3, 4
+balancing:
+  use_weighted_sampler: True 
+  use_weighted_loss: False 
+  repeats_per_label: # Corresponds to NEW 5-class labels (0 to 4)
+    0: 2      # happiness (original 0)
+    1: 2      # disgust   (original 1)
+    2: 15     # repression(original 2)
+    3: 3      # surprise  (original 3)
+    4: 1      # others    (original 6) -> Mapped to new label 4
+  
+# --- Logging & Output ---
+logging:
+  log_dir: "logs" # Relative to project root if not specified otherwise
+  output_dir: "stage2_lstm_output" # Relative to project root
+
+# --- Environment Settings ---
+environment:
+  num_workers: 0 
+  pin_memory: True
+  device: "auto" 
