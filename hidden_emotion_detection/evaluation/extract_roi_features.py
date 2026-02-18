@@ -21,6 +21,7 @@ ROI 光流特征提取脚本（独立于训练，需要 cv2 + dlib）
 """
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -176,7 +177,7 @@ class ROIFlowFeatureExtractor:
             except cv2.error:
                 aligned.append(gray_imgs[i])
 
-        # 计算光流特征
+        # 计算光流特征（逐帧计算，及时释放内存）
         n = len(aligned)
         features = np.zeros((n - 1, len(self.ROI_NAMES) * 2), dtype=np.float32)
 
@@ -193,10 +194,12 @@ class ROIFlowFeatureExtractor:
                 )
                 features[i, ri * 2] = dx - gx
                 features[i, ri * 2 + 1] = dy - gy
+            del flow  # 及时释放光流矩阵
 
-        # 截取 onset-offset 区间
-        # 帧号映射到索引
+        # 截取 onset-offset 区间（先提取 frame_ids 再释放大数组）
         frame_ids = [fid for fid, _ in grays]
+        del aligned, gray_imgs, landmarks_list, grays
+
         onset_idx = 0
         offset_idx = len(features)
         for idx, fid in enumerate(frame_ids[:-1]):  # features 比 frames 少1
@@ -295,7 +298,13 @@ def main():
             continue
 
         logger.info(f"[{i+1}/{len(annotations)}] 提取 {sample_id} ...")
-        feat = extractor.extract_segment(str(data_root), subj, video, onset, offset)
+        try:
+            feat = extractor.extract_segment(str(data_root), subj, video, onset, offset)
+        except (MemoryError, Exception) as e:
+            logger.warning(f"  跳过 {sample_id}: {type(e).__name__}: {e}")
+            gc.collect()
+            skipped += 1
+            continue
 
         if feat is None or len(feat) < 3:
             logger.warning(f"  跳过 {sample_id}: 特征不足")
@@ -322,6 +331,8 @@ def main():
         manifest.append(meta)
         extracted += 1
         logger.info(f"  保存: {feat.shape}")
+        del feat
+        gc.collect()
 
     # 保存清单
     with open(output_dir / 'manifest.json', 'w', encoding='utf-8') as f:
