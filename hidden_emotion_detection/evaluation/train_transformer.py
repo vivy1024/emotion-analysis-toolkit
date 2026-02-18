@@ -2,12 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """
-ROI 光流特征提取 + Transformer 训练/评估脚本
-在 CASME II 上进行 LOSO 交叉验证，计算完整 STRS 指标。
+ROI Transformer 训练/评估脚本（纯 PyTorch，不依赖 cv2）
+
+从预提取的 .npy 特征文件加载数据，在 CASME II 上进行 LOSO 交叉验证。
+
+两阶段流程:
+    1. 先运行 extract_roi_features.py 提取特征（需要 cv2 + dlib）
+    2. 再运行本脚本训练（纯 PyTorch）
 
 用法:
     python -m hidden_emotion_detection.evaluation.train_transformer \
-        --data_root "旧有文件/18/data/raw/CASME II" \
+        --features_dir hidden_emotion_detection/evaluation/features_casme2 \
         --epochs 30 --lr 0.001
 
 该脚本不修改现有 micro_expression/ 下的训练架构，
@@ -21,11 +26,10 @@ import sys
 import json
 import time
 import numpy as np
-import cv2
 import torch
 import torch.nn as nn
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from collections import defaultdict
 
 logging.basicConfig(
@@ -33,166 +37,6 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
 logger = logging.getLogger("TransformerTrain")
-
-
-# ============================================================
-# ROI 光流特征提取器
-# ============================================================
-
-class ROIFlowFeatureExtractor:
-    """
-    从 CASME II 图片序列中提取 7-ROI 光流特征
-
-    输出: (T-1, 14) — T-1帧的光流，每帧 7 ROI × 2 (dx, dy)
-    """
-
-    ROI_DEFINITIONS = {
-        'left_eyebrow': {'landmarks': list(range(17, 22)), 'percent': 0.3},
-        'right_eyebrow': {'landmarks': list(range(22, 27)), 'percent': 0.3},
-        'left_eye': {'landmarks': list(range(36, 42)), 'percent': 0.2},
-        'right_eye': {'landmarks': list(range(42, 48)), 'percent': 0.2},
-        'nose': {'landmarks': list(range(27, 36)), 'percent': 0.2},
-        'mouth_outer': {'landmarks': list(range(48, 60)), 'percent': 0.3},
-        'mouth_inner': {'landmarks': list(range(60, 68)), 'percent': 0.3},
-    }
-    GLOBAL_REF = [29, 30, 31]
-    ROI_NAMES = list(ROI_DEFINITIONS.keys())
-
-    def __init__(self, predictor_path: str):
-        import dlib
-        self.detector = dlib.get_frontal_face_detector()
-        # 处理中文路径
-        try:
-            predictor_path.encode('ascii')
-            self.predictor = dlib.shape_predictor(predictor_path)
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            import tempfile, shutil
-            tmp = os.path.join(tempfile.gettempdir(), 'shape_predictor_68.dat')
-            if not os.path.exists(tmp):
-                shutil.copy2(predictor_path, tmp)
-            self.predictor = dlib.shape_predictor(tmp)
-
-        self.flow_params = dict(
-            pyr_scale=0.5, levels=3, winsize=15,
-            iterations=5, poly_n=7, poly_sigma=1.5, flags=0
-        )
-
-    def _detect_landmarks(self, gray):
-        import dlib
-        faces = self.detector(gray, 0)
-        if len(faces) == 0:
-            h, w = gray.shape
-            faces = [dlib.rectangle(0, 0, w, h)]
-        shape = self.predictor(gray, faces[0])
-        return np.array([[shape.part(i).x, shape.part(i).y]
-                         for i in range(68)], dtype=np.float32)
-
-    def _imread_unicode(self, path):
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        if img is not None:
-            return img
-        try:
-            with open(path, 'rb') as f:
-                data = np.frombuffer(f.read(), dtype=np.uint8)
-            return cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
-        except Exception:
-            return None
-
-    def _get_roi_flow_vec(self, flow, landmarks, indices, percent, expand=5):
-        """提取单个 ROI 的光流向量 (dx, dy)"""
-        h, w = flow.shape[:2]
-        pts = landmarks[indices].astype(int)
-        x_min = max(0, pts[:, 0].min() - expand)
-        x_max = min(w, pts[:, 0].max() + expand)
-        y_min = max(0, pts[:, 1].min() - expand)
-        y_max = min(h, pts[:, 1].max() + expand)
-        if x_max <= x_min or y_max <= y_min:
-            return 0.0, 0.0
-        roi = flow[y_min:y_max, x_min:x_max]
-        fx, fy = roi[:, :, 0].flatten(), roi[:, :, 1].flatten()
-        mag = np.sqrt(fx ** 2 + fy ** 2)
-        if len(mag) == 0:
-            return 0.0, 0.0
-        threshold = np.percentile(mag, (1 - percent) * 100)
-        mask = mag >= threshold
-        if mask.sum() == 0:
-            return float(fx.mean()), float(fy.mean())
-        return float(fx[mask].mean()), float(fy[mask].mean())
-
-    def extract_features(self, data_root: str, subject: str, video: str) -> Optional[np.ndarray]:
-        """
-        提取一个视频的 ROI 光流特征
-
-        Returns:
-            np.ndarray: (T-1, 14) 或 None
-        """
-        video_dir = os.path.join(data_root, f'sub{subject}', video)
-        if not os.path.isdir(video_dir):
-            return None
-
-        # 加载帧
-        frames = []
-        for fname in os.listdir(video_dir):
-            if not fname.lower().endswith(('.jpg', '.png', '.bmp')):
-                continue
-            try:
-                fid = int(''.join(filter(str.isdigit, os.path.splitext(fname)[0])))
-            except ValueError:
-                continue
-            img = self._imread_unicode(os.path.join(video_dir, fname))
-            if img is not None:
-                frames.append((fid, img))
-        frames.sort(key=lambda x: x[0])
-
-        if len(frames) < 5:
-            return None
-
-        # 检测关键点
-        landmarks_list = []
-        grays = []
-        for _, gray in frames:
-            lm = self._detect_landmarks(gray)
-            landmarks_list.append(lm)
-            grays.append(gray)
-
-        # 帧对齐
-        ref_lm = landmarks_list[0]
-        src_pts = np.float32([ref_lm[39], ref_lm[42], ref_lm[33]])
-        h, w = grays[0].shape[:2]
-        aligned = [grays[0]]
-        for i in range(1, len(grays)):
-            lm = landmarks_list[i]
-            dst_pts = np.float32([lm[39], lm[42], lm[33]])
-            try:
-                M = cv2.getAffineTransform(dst_pts, src_pts)
-                warped = cv2.warpAffine(grays[i], M, (w, h),
-                                        flags=cv2.INTER_LINEAR,
-                                        borderMode=cv2.BORDER_REFLECT_101)
-                aligned.append(warped)
-            except cv2.error:
-                aligned.append(grays[i])
-
-        # 计算光流特征
-        n = len(aligned)
-        features = np.zeros((n - 1, len(self.ROI_NAMES) * 2), dtype=np.float32)
-
-        for i in range(n - 1):
-            flow = cv2.calcOpticalFlowFarneback(
-                aligned[i], aligned[i + 1], None, **self.flow_params
-            )
-            lm = landmarks_list[min(i, len(landmarks_list) - 1)]
-
-            # 全局运动补偿
-            gx, gy = self._get_roi_flow_vec(flow, lm, self.GLOBAL_REF, 0.5, 10)
-
-            for ri, (name, roi_def) in enumerate(self.ROI_DEFINITIONS.items()):
-                dx, dy = self._get_roi_flow_vec(
-                    flow, lm, roi_def['landmarks'], roi_def['percent'], 5
-                )
-                features[i, ri * 2] = dx - gx
-                features[i, ri * 2 + 1] = dy - gy
-
-        return features
 
 
 # ============================================================
@@ -278,7 +122,6 @@ def evaluate(model, dataloader, device):
 
 def compute_uf1_uar(preds, labels, num_classes=4):
     """计算 UF1 和 UAR"""
-    from collections import Counter
     per_class_f1 = []
     per_class_recall = []
     for c in range(num_classes):
@@ -295,61 +138,60 @@ def compute_uf1_uar(preds, labels, num_classes=4):
     return uf1, uar
 
 
-def run_loso_training(data_root: str, predictor_path: str,
-                      annotations: list, config: dict) -> dict:
+def run_loso_training(features_dir: str, config: dict) -> dict:
     """
     LOSO 训练 + 评估 ROITransformerModel
 
+    从预提取的 .npy 特征文件加载数据，不依赖 cv2。
     不修改 micro_expression/ 下的任何训练代码。
     """
-    # 延迟导入，避免循环依赖
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from micro_expression.models import ROITransformerModel
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"设备: {device}")
 
-    # 提取所有特征
-    extractor = ROIFlowFeatureExtractor(predictor_path)
-    all_subjects = sorted(set(a['subject'] for a in annotations))
+    # 从 manifest.json 加载样本清单
+    manifest_path = os.path.join(features_dir, 'manifest.json')
+    if not os.path.exists(manifest_path):
+        raise FileNotFoundError(f"找不到 manifest.json: {manifest_path}\n"
+                                f"请先运行 extract_roi_features.py 提取特征")
 
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        manifest = json.load(f)
+
+    all_subjects = sorted(set(m['subject'] for m in manifest))
     if config.get('subjects'):
         all_subjects = [s for s in all_subjects if s in config['subjects']]
 
     # 按被试组织数据
     subject_data = defaultdict(lambda: {'features': [], 'labels': [], 'videos': []})
 
-    logger.info(f"提取 {len(all_subjects)} 个被试的 ROI 光流特征...")
-    for ann in annotations:
-        subj = ann['subject']
+    logger.info(f"从 {features_dir} 加载预提取特征...")
+    for m in manifest:
+        subj = m['subject']
         if subj not in all_subjects:
             continue
-        video = ann['video']
-        emotion = ann.get('emotion', 'others').lower()
-        label = CASME2ROIDataset.EMOTION_MAP_4CLASS.get(emotion, 0)
-
-        # 检查是否已提取
+        video = m['video']
+        label = m['label']
         key = f"{subj}_{video}"
         if key in subject_data[subj]['videos']:
             continue
 
-        feat = extractor.extract_features(data_root, subj, video)
-        if feat is None or len(feat) < 3:
+        npy_path = os.path.join(features_dir, m['npy_file'])
+        if not os.path.exists(npy_path):
+            logger.warning(f"跳过 {key}: npy 文件不存在")
             continue
 
-        # 只取 onset-offset 区间的特征（如果标注有效）
-        onset_idx = max(0, ann['onset'] - 1)  # 帧号转索引
-        offset_idx = min(len(feat), ann['offset'])
-        if offset_idx > onset_idx and (offset_idx - onset_idx) >= 3:
-            segment_feat = feat[onset_idx:offset_idx]
-        else:
-            segment_feat = feat  # fallback: 用整个视频
+        feat = np.load(npy_path)
+        if len(feat) < 3:
+            continue
 
-        subject_data[subj]['features'].append(segment_feat)
+        subject_data[subj]['features'].append(feat)
         subject_data[subj]['labels'].append(label)
         subject_data[subj]['videos'].append(key)
 
-    logger.info(f"特征提取完成，共 {sum(len(v['labels']) for v in subject_data.values())} 个样本")
+    logger.info(f"加载完成，共 {sum(len(v['labels']) for v in subject_data.values())} 个样本")
 
     # LOSO 训练
     num_classes = 4
@@ -453,10 +295,9 @@ def run_loso_training(data_root: str, predictor_path: str,
 
 def main():
     parser = argparse.ArgumentParser(description='ROI Transformer CASME II 训练')
-    parser.add_argument('--data_root', type=str,
-                        default=r'旧有文件\18\data\raw\CASME II')
-    parser.add_argument('--predictor', type=str,
-                        default=r'hidden_emotion_detection\models\shape_predictor_68_face_landmarks.dat')
+    parser.add_argument('--features_dir', type=str,
+                        default=r'hidden_emotion_detection\evaluation\features_casme2',
+                        help='预提取特征目录（含 manifest.json）')
     parser.add_argument('--subjects', nargs='*', default=None)
     parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--lr', type=float, default=0.001)
@@ -469,16 +310,9 @@ def main():
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent.parent
-    data_root = Path(args.data_root)
-    if not data_root.is_absolute():
-        data_root = project_root / data_root
-    predictor_path = Path(args.predictor)
-    if not predictor_path.is_absolute():
-        predictor_path = project_root / predictor_path
-
-    # 加载标注
-    from .evaluate_casme2 import load_casme2_annotations
-    annotations = load_casme2_annotations(str(data_root))
+    features_dir = Path(args.features_dir)
+    if not features_dir.is_absolute():
+        features_dir = project_root / features_dir
 
     config = {
         'epochs': args.epochs, 'lr': args.lr, 'batch_size': args.batch_size,
@@ -488,7 +322,7 @@ def main():
         'subjects': args.subjects,
     }
 
-    results = run_loso_training(str(data_root), str(predictor_path), annotations, config)
+    results = run_loso_training(str(features_dir), config)
 
     # 输出
     print("\n" + "=" * 50)
