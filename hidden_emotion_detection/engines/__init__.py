@@ -52,6 +52,14 @@ except ImportError:
     logging.warning("姿态估计引擎导入失败")
     PoseEstimator = None
 
+# 导入光流 Spotting 引擎
+try:
+    from .optical_flow_spotting_engine import OpticalFlowSpottingEngine
+except ImportError:
+    import logging
+    logging.warning("光流 Spotting 引擎导入失败")
+    OpticalFlowSpottingEngine = None
+
 # 根据配置选择引擎实现
 SpeechToTextEngine = None
 
@@ -62,5 +70,6 @@ __all__ = [
     'HiddenEmotionEngine',
     'FaceDetectionEngine',
     'PoseEstimator',
+    'OpticalFlowSpottingEngine',
     'SpeechToTextEngine'
 ] 
