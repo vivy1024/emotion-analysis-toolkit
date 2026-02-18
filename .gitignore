@@ -222,9 +222,15 @@ logs/
 *.jpg
 *.jpeg
 
+# 参考代码（第三方仓库，不纳入版本控制）
+references/
+
 # 嵌套 git 仓库 / 已合并的旧目录
 emotion-analysis-toolkit/
 enhance_hidden/
+
+# 临时文件
+_*.txt
 
 # 历史遗留
 18_2/
