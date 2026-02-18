@@ -150,27 +150,35 @@ pip install -r macro_expression/requirements.txt
 
 ### 规则7：等待用户时必须暂停输出
 
-当需要等待用户操作时：
+当需要等待用户操作（环境变量更新等）时：
 - ✅ 说明等待什么，然后**停止输出**，不要持续发送消息
 - ✅ 收到旧的 `task-notification` 时，**完全忽略，不回复任何内容**
+- ✅ 如果有多个旧通知堆积，一条都不要回复
 - ❌ 禁止对每个旧后台任务通知都回复"旧通知，忽略"等消息
-- ❌ 禁止在等待期间循环发送消息（会导致上下文膨胀、compact失败）
+- ❌ 禁止在等待期间循环发送消息（会导致上下文膨胀、用户无法暂停、compact失败）
 
-### 规则8：Windows Bash 后台命令防风暴
+原因：VSCode Claude Code插件中，持续输出会阻塞用户交互，暂停按钮可能需要多次点击才能生效，
+上下文过长会导致compact失败，对话彻底终结。
 
-Windows 环境下 bash 命令可能全部以后台模式运行，导致无法直接获取输出。
+---
+
+### 规则8：Windows Bash后台命令防风暴
+
+Windows环境下bash命令可能全部以后台模式运行，导致无法直接获取输出。
 
 **正确做法**：
 ```bash
-# 1. 命令输出重定向到文件
-python -m pytest tests/ > _output.txt 2>&1
-# 2. 用 Read 工具读取文件（不用 bash cat）
+# 1. 命令输出重定向到固定文件（复用同一个文件名，不要每次创建新文件）
+docker exec fitness_daml_rag python -m pytest tests/ > /f/build_body/_output.txt 2>&1
+# 2. 用Read工具读取文件（不用bash cat）
+# 3. 读取完毕后及时删除临时文件，避免根目录污染
 ```
 
 **禁止**：
 - ❌ 使用 `sleep N && cat file` 链式命令等待输出（会形成后台任务雪崩）
-- ❌ 反复 spawn 新 bash 命令读取上一个命令的输出
-- ❌ Agent 内部超过 3 次 bash 重试后仍继续（应改用 Read 工具或报告失败）
+- ❌ 反复spawn新bash命令读取上一个命令的输出
+- ❌ Agent内部超过3次bash重试后仍继续（应改用Read工具或报告失败）
+- ❌ 每个命令创建不同的临时文件名（如`_grep1.txt`、`_grep2.txt`），应复用`_output.txt`
 
 ---
 

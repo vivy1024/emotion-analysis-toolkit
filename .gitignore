@@ -203,9 +203,9 @@ cython_debug/
 .claude/
 
 # 虚拟环境
-.venv_new/
+.venv*/
 
-# 模型权重和训练输出
+# 模型权重（各种格式）
 *.pth
 *.pt
 *.pkl
@@ -213,24 +213,39 @@ cython_debug/
 *.tflite
 *.h5
 *.onnx
-stage2_lstm_output/
+*.xml
+hidden_emotion_detection/models/AU_all_static.txt
+
+# 训练输出
+outputs/
 stage1_cnn_output/
+stage2_lstm_output/
 logs/
+
+# 特征文件
+features_*/
+*.npy
 
 # 大文件/二进制
 *.png
 *.jpg
 *.jpeg
 
-# 参考代码（第三方仓库，不纳入版本控制）
+# 数据集
+data/
+
+# 参考代码（第三方仓库，体积大，按需克隆）
 references/
 
 # 嵌套 git 仓库 / 已合并的旧目录
 emotion-analysis-toolkit/
 enhance_hidden/
 
-# 临时文件
+# 临时文件（以 _ 开头的调试输出）
 _*.txt
+_*.json
+_*.csv
+nul
 
 # 历史遗留
 18_2/
