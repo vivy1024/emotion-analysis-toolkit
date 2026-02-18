@@ -362,4 +362,105 @@ if __name__ == '__main__':
         # print(f"冻结骨干后可训练参数量: {trainable_params}")
         
     except Exception as e:
-        print(f"CNN_LSTM_Model测试出错: {e}") 
+        print(f"CNN_LSTM_Model测试出错: {e}")
+
+
+# ============================================================
+# 新增：ROI 光流 Transformer 分类器
+# 参考 MEGC2024 STR 第2名方案 (Transformer_rois)
+# 作为新模型类型，不影响现有 CNN/LSTM/CNN_LSTM 架构
+# ============================================================
+
+class ROITransformerModel(nn.Module):
+    """
+    基于 ROI 光流特征的小型 Transformer 微表情分类器
+
+    参考: MEGC2024 STR 第2名 (HIT) — 18-ROI 光流 + Transformer
+    本实现适配 7-ROI（与 OpticalFlowSpottingEngine 一致），参数更轻量。
+
+    输入: (B, T, num_rois * 2) — T帧序列，每帧 num_rois 个 ROI 的 (dx, dy) 光流
+    输出: (B, num_classes) — 分类 logits
+    """
+
+    def __init__(self,
+                 num_rois: int = 7,
+                 max_seq_len: int = 64,
+                 num_classes: int = NUM_CLASSES,
+                 dim: int = 64,
+                 depth: int = 3,
+                 heads: int = 4,
+                 mlp_dim: int = 128,
+                 dim_head: int = 16,
+                 dropout: float = 0.1,
+                 emb_dropout: float = 0.1):
+        super(ROITransformerModel, self).__init__()
+
+        self.num_rois = num_rois
+        self.num_classes = num_classes
+        self.max_seq_len = max_seq_len
+        patch_dim = num_rois * 2  # 每帧输入维度: 7 ROI × 2 (dx, dy) = 14
+
+        # 输入投影: patch_dim -> dim
+        self.input_proj = nn.Linear(patch_dim, dim)
+
+        # CLS token
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+
+        # 位置编码 (可学习)
+        self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len + 1, dim))
+        self.emb_dropout = nn.Dropout(emb_dropout)
+
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=dim,
+            nhead=heads,
+            dim_feedforward=mlp_dim,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True,
+            norm_first=True,  # Pre-LN（更稳定）
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=depth)
+
+        # 分类头
+        self.norm = nn.LayerNorm(dim)
+        self.mlp_head = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim, num_classes),
+        )
+
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T, num_rois * 2) 光流特征序列
+        Returns:
+            (B, num_classes) logits
+        """
+        b, t, _ = x.shape
+
+        # 投影到 dim 维
+        x = self.input_proj(x)  # (B, T, dim)
+
+        # 添加 CLS token
+        cls_tokens = self.cls_token.expand(b, -1, -1)  # (B, 1, dim)
+        x = torch.cat([cls_tokens, x], dim=1)  # (B, T+1, dim)
+
+        # 添加位置编码（截断或填充到实际长度）
+        x = x + self.pos_embedding[:, :t + 1, :]
+        x = self.emb_dropout(x)
+
+        # Transformer 编码
+        x = self.transformer(x)  # (B, T+1, dim)
+
+        # 取 CLS token 输出
+        cls_out = x[:, 0]  # (B, dim)
+        cls_out = self.norm(cls_out)
+
+        # 分类
+        return self.mlp_head(cls_out)  # (B, num_classes)
+
+    def count_parameters(self):
+        """统计可训练参数量"""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
