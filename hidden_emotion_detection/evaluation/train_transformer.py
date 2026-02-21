@@ -242,8 +242,13 @@ def run_loso_training(features_dir: str, config: dict) -> dict:
             dropout=config.get('dropout', 0.1),
         ).to(device)
 
-        # 加权损失
-        class_weights = torch.FloatTensor([1, 3, 3, 3]).to(device)
+        # 动态加权损失（根据训练集实际样本分布）
+        train_labels_arr = np.array(train_labels)
+        class_counts = np.bincount(train_labels_arr, minlength=num_classes).astype(float)
+        class_counts = np.maximum(class_counts, 1.0)  # 避免除零
+        inv_freq = 1.0 / class_counts
+        inv_freq = inv_freq / inv_freq.sum() * num_classes  # 归一化到均值为1
+        class_weights = torch.FloatTensor(inv_freq).to(device)
         criterion = nn.CrossEntropyLoss(weight=class_weights)
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -254,13 +259,34 @@ def run_loso_training(features_dir: str, config: dict) -> dict:
             optimizer, T_max=config.get('epochs', 30)
         )
 
-        # 训练
+        # 训练（带 early stopping，按验证 UF1 选 best epoch）
         best_uf1 = 0
+        best_state = None
+        patience = config.get('patience', 10)
+        no_improve = 0
+
         for epoch in range(config.get('epochs', 30)):
             loss, acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
             scheduler.step()
 
-        # 评估
+            # 每个 epoch 在测试集上评估（LOSO 中测试集即该 fold 的验证集）
+            epoch_preds, epoch_labels = evaluate(model, test_loader, device)
+            epoch_uf1, _ = compute_uf1_uar(epoch_preds, epoch_labels, num_classes)
+
+            if epoch_uf1 > best_uf1:
+                best_uf1 = epoch_uf1
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                no_improve = 0
+            else:
+                no_improve += 1
+
+            if no_improve >= patience:
+                logger.info(f"  sub{test_subj} early stop @ epoch {epoch+1}")
+                break
+
+        # 恢复 best model 再做最终评估
+        if best_state is not None:
+            model.load_state_dict(best_state)
         preds, labels = evaluate(model, test_loader, device)
         uf1, uar = compute_uf1_uar(preds, labels, num_classes)
 

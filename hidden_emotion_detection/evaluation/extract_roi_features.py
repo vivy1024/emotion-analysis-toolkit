@@ -83,15 +83,19 @@ class ROIFlowFeatureExtractor:
             iterations=5, poly_n=7, poly_sigma=1.5, flags=0
         )
 
-    def _detect_landmarks(self, gray):
+    def _detect_landmarks(self, gray, face_rect=None):
+        """检测68个关键点。如果提供 face_rect 则跳过人脸检测直接预测。"""
         import dlib
-        faces = self.detector(gray, 0)
-        if len(faces) == 0:
-            h, w = gray.shape
-            faces = [dlib.rectangle(0, 0, w, h)]
-        shape = self.predictor(gray, faces[0])
+        if face_rect is None:
+            faces = self.detector(gray, 0)
+            if len(faces) == 0:
+                h, w = gray.shape
+                face_rect = dlib.rectangle(0, 0, w, h)
+            else:
+                face_rect = faces[0]
+        shape = self.predictor(gray, face_rect)
         return np.array([[shape.part(i).x, shape.part(i).y]
-                         for i in range(68)], dtype=np.float32)
+                         for i in range(68)], dtype=np.float32), face_rect
 
     def _get_roi_flow_vec(self, flow, landmarks, indices, percent, expand=5):
         import cv2
@@ -152,11 +156,12 @@ class ROIFlowFeatureExtractor:
         if len(grays) < 5:
             return None
 
-        # 检测关键点
+        # 检测关键点（只在第一帧做完整人脸检测，后续帧复用 bbox）
         landmarks_list = []
         gray_imgs = []
+        face_rect = None
         for _, gray in grays:
-            lm = self._detect_landmarks(gray)
+            lm, face_rect = self._detect_landmarks(gray, face_rect)
             landmarks_list.append(lm)
             gray_imgs.append(gray)
 
@@ -186,7 +191,7 @@ class ROIFlowFeatureExtractor:
                 aligned[i], aligned[i + 1], None, **self.flow_params
             )
             lm = landmarks_list[min(i, len(landmarks_list) - 1)]
-            gx, gy = self._get_roi_flow_vec(flow, lm, self.GLOBAL_REF, 0.5, 10)
+            gx, gy = self._get_roi_flow_vec(flow, lm, self.GLOBAL_REF, 0.3, 5)
 
             for ri, (name, roi_def) in enumerate(self.ROI_DEFINITIONS.items()):
                 dx, dy = self._get_roi_flow_vec(
@@ -200,18 +205,35 @@ class ROIFlowFeatureExtractor:
         frame_ids = [fid for fid, _ in grays]
         del aligned, gray_imgs, landmarks_list, grays
 
-        onset_idx = 0
-        offset_idx = len(features)
+        onset_idx = None
+        offset_idx = None
         for idx, fid in enumerate(frame_ids[:-1]):  # features 比 frames 少1
-            if fid >= onset and onset_idx == 0:
+            if onset_idx is None and fid >= onset:
                 onset_idx = idx
             if fid >= offset:
                 offset_idx = idx
                 break
 
+        # 如果 onset 未匹配到，尝试用最接近的帧
+        if onset_idx is None:
+            onset_idx = 0
+            logger.debug(f"  onset={onset} 未匹配到帧号，使用首帧 fid={frame_ids[0]}")
+        if offset_idx is None:
+            offset_idx = len(features)
+            logger.debug(f"  offset={offset} 未匹配到帧号，使用末帧 fid={frame_ids[-1]}")
+
         segment = features[onset_idx:offset_idx]
+
+        # 如果截取后太短，记录警告，取 onset 附近上下文窗口而非整个视频
         if len(segment) < 3:
-            segment = features  # fallback
+            logger.warning(
+                f"  segment 过短({len(segment)}帧), onset={onset}, offset={offset}, "
+                f"帧范围=[{frame_ids[0]}..{frame_ids[-1]}], 总帧数={len(features)}"
+            )
+            center = onset_idx if onset_idx is not None else len(features) // 2
+            start = max(0, center - 8)
+            end = min(len(features), center + 8)
+            segment = features[start:end]
 
         return segment
 
