@@ -256,3 +256,5 @@ fer2013model/
 
 # 论文（私有）
 thesis_chapters/
+# C++ 子项目（独立 git 仓库）
+hidden_emotion_cpp/
