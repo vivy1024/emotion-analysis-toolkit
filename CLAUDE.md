@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**版本**: v2.2.0 | **更新**: 2026-02-18 | **语言**: 始终使用中文回复
+**版本**: v2.3.0 | **更新**: 2026-02-23 | **语言**: 始终使用中文回复
 
 **项目**: 情绪分析工具集（Emotion Analysis Toolkit）| **开发者**: 薛小川
 
@@ -10,16 +10,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-实时视频隐藏情绪检测系统 + 微表情/宏表情模型训练工具集。
+实时视频隐藏情绪检测系统 + 微表情/宏表情模型训练工具集 + C++ 高性能重写版。
 
-**技术栈**: PyTorch + OpenCV + PyQt5 + dlib + MediaPipe + scikit-learn
-**Python**: 3.7+
+**Python 技术栈**: PyTorch + OpenCV + PyQt5 + dlib + MediaPipe + scikit-learn | Python 3.7+
+**C++ 技术栈**: C++20 + Qt6 + OpenCV 4.12 + ONNX Runtime GPU + dlib + spdlog | CMake + MSVC
 
-| 子项目 | 目录 | 说明 |
-|--------|------|------|
-| 实时检测系统 | `hidden_emotion_detection/` | PyQt5 GUI，6面板布局，多引擎并行 |
-| 微表情训练 | `micro_expression/` | CNN+LSTM 两阶段训练 |
-| 宏表情训练 | `macro_expression/` | 支持 FER2013 等公开数据集 |
+| 子项目 | 目录 | 说明 | 语言 |
+|--------|------|------|------|
+| 实时检测系统（Python） | `hidden_emotion_detection/` | PyQt5 GUI，6面板布局，多引擎并行 | Python |
+| 实时检测系统（C++） | `hidden_emotion_cpp/` | Qt6 QDockWidget 面板 + ONNX GPU 加速，独立 git 仓库 | C++ |
+| 微表情训练 | `micro_expression/` | CNN+LSTM 两阶段训练 | Python |
+| 宏表情训练 | `macro_expression/` | 支持 FER2013 等公开数据集 | Python |
+| 评估工具 | `hidden_emotion_detection/evaluation/` | CASME2 基线训练 + STRS 指标 + ROI 特征提取 | Python |
 
 ### 联系方式
 
@@ -32,26 +34,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 常用命令
 
 ```bash
+# === Python 实时检测 ===
 # 启动实时检测 GUI
 python -m hidden_emotion_detection.main
 # 可选: --debug, --log-level DEBUG/INFO/WARNING
 
-# 微表情 - CNN 第一阶段
+# === 微表情训练 ===
+# CNN 第一阶段
 python -m micro_expression.train_cnn --config micro_expression/config_cnn_stage1.yaml
 
-# 微表情 - 特征提取
+# 特征提取
 python -m micro_expression.extract_features --config micro_expression/config_feature_extraction.yaml
 
-# 微表情 - LSTM 第二阶段
+# LSTM 第二阶段
 python -m micro_expression.train_lstm --config micro_expression/config_lstm_stage2.yaml
 
-# 微表情 - 超参数搜索
+# 超参数搜索
 python -m micro_expression.hpo_train --config micro_expression/config_lstm_stage2.yaml
 
-# 宏表情训练
+# === 宏表情训练 ===
 python -m macro_expression.multi_dataset_train --dataset fer2013
 
-# 安装依赖
+# === 评估工具 ===
+python -m hidden_emotion_detection.evaluation.train_baselines
+python -m hidden_emotion_detection.evaluation.evaluate_casme2
+
+# === C++ 版构建（独立 git 仓库） ===
+cd hidden_emotion_cpp
+cmake --preset default
+cmake --build . --config Release
+Release/HiddenEmotionDetector.exe
+
+# === 安装依赖 ===
 pip install -r hidden_emotion_detection/requirements.txt
 pip install -r micro_expression/requirements.txt
 pip install -r macro_expression/requirements.txt
@@ -117,9 +131,12 @@ pip install -r macro_expression/requirements.txt
 
 ### 规则4：Git 仓库
 
-| 本地目录 | GitHub 仓库 |
-|---------|------------|
-| 当前项目 | `vivy1024/emotion-analysis-toolkit` |
+| 本地目录 | GitHub 仓库 | 说明 |
+|---------|------------|------|
+| 当前项目（根目录） | `vivy1024/emotion-analysis-toolkit` | Python 工具集 |
+| `hidden_emotion_cpp/` | `vivy1024/hidden-emotion-cpp` | C++ 版，独立 git 仓库（已在 .gitignore 中排除） |
+
+⚠️ `hidden_emotion_cpp/` 是独立 git 仓库，不要在主仓库中 `git add` 它
 
 ### 规则5：复杂任务必须使用 Agent Teams
 
@@ -222,11 +239,14 @@ git checkout -b fix/config-path          # Bug修复
 | 微表情训练 | `docs/03-训练指南/01-微表情训练.md` |
 | 宏表情训练 | `docs/03-训练指南/02-宏表情训练.md` |
 | 微表情领域参考 | `docs/03-训练指南/03-微表情领域参考索引.md` |
-| 数据集申请 | `docs/04-开发指南/02-数据集申请指南.md` |
-| 技术迭代路线 | `docs/04-开发指南/03-技术迭代路线.md` |
+| CASME2 实验计划 | `docs/03-训练指南/05-CASME2实验计划.md` |
 | 开发约定 | `docs/04-开发指南/01-开发约定.md` |
+| 数据集申请 | `docs/04-开发指南/数据集申请/` |
+| 技术迭代路线 | `docs/04-开发指南/03-技术迭代路线.md` |
 | 实时检测配置 | `hidden_emotion_detection/config/config.json` |
+| C++ 版规则 | `hidden_emotion_cpp/CLAUDE.md` |
+| C++ 版升级 spec | `hidden_emotion_cpp/.kiro/specs/` |
 
 ---
 
-**维护者**: 薛小川 | v2.2.0 | **Always respond in Chinese**
+**维护者**: 薛小川 | v2.3.0 | **Always respond in Chinese**
