@@ -332,6 +332,7 @@ def main():
     parser.add_argument('--depth', type=int, default=3)
     parser.add_argument('--heads', type=int, default=4)
     parser.add_argument('--max_seq_len', type=int, default=64)
+    parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--output_json', type=str, default=None)
     args = parser.parse_args()
 
@@ -344,7 +345,7 @@ def main():
         'epochs': args.epochs, 'lr': args.lr, 'batch_size': args.batch_size,
         'dim': args.dim, 'depth': args.depth, 'heads': args.heads,
         'mlp_dim': args.dim * 2, 'max_seq_len': args.max_seq_len,
-        'dropout': 0.1, 'weight_decay': 0.01,
+        'dropout': args.dropout, 'weight_decay': 0.01,
         'subjects': args.subjects,
     }
 
