@@ -59,18 +59,27 @@ class CASME2ROIDataset(torch.utils.data.Dataset):
         'tense': 3,        # negative
     }
 
-    def __init__(self, features_list, labels_list, max_seq_len=64, num_rois=7):
+    def __init__(self, features_list, labels_list, max_seq_len=64, num_rois=7,
+                 augment=False):
         self.features = features_list  # list of (T, 14) arrays
         self.labels = labels_list      # list of int
         self.max_seq_len = max_seq_len
         self.num_rois = num_rois
+        self.augment = augment
 
     def __len__(self):
         return len(self.features)
 
     def __getitem__(self, idx):
-        feat = self.features[idx]  # (T, 14)
+        feat = self.features[idx].copy()  # (T, 14)
         label = self.labels[idx]
+
+        if self.augment:
+            # 50% 概率时间翻转
+            if np.random.random() < 0.5:
+                feat = feat[::-1].copy()
+            # 高斯噪声
+            feat = feat + np.random.normal(0, 0.01, feat.shape).astype(np.float32)
 
         # 截断或填充到 max_seq_len
         t = feat.shape[0]
@@ -219,7 +228,8 @@ def run_loso_training(features_dir: str, config: dict) -> dict:
             continue
 
         # 创建数据集
-        train_ds = CASME2ROIDataset(train_feats, train_labels, max_seq_len)
+        train_ds = CASME2ROIDataset(train_feats, train_labels, max_seq_len,
+                                     augment=config.get('augment', False))
         test_ds = CASME2ROIDataset(test_feats, test_labels, max_seq_len)
 
         train_loader = torch.utils.data.DataLoader(
@@ -307,10 +317,23 @@ def run_loso_training(features_dir: str, config: dict) -> dict:
 
     logger.info(f"全局: UF1={global_uf1:.4f}, UAR={global_uar:.4f}")
 
+    # 混淆矩阵
+    class_names = ['others', 'positive', 'surprise', 'negative']
+    cm = np.zeros((num_classes, num_classes), dtype=int)
+    for p, l in zip(all_preds, all_labels):
+        cm[l][p] += 1
+    logger.info("混淆矩阵 (行=真实, 列=预测):")
+    header = "          " + "  ".join(f"{n:>9}" for n in class_names)
+    logger.info(header)
+    for i, name in enumerate(class_names):
+        row = "  ".join(f"{cm[i][j]:>9}" for j in range(num_classes))
+        logger.info(f"{name:>9} {row}")
+
     return {
         'global': {'uf1': float(global_uf1), 'uar': float(global_uar),
                     'n_samples': len(all_labels)},
         'per_subject': per_subject_results,
+        'confusion_matrix': cm.tolist(),
         'config': config,
     }
 
@@ -332,7 +355,8 @@ def main():
     parser.add_argument('--depth', type=int, default=3)
     parser.add_argument('--heads', type=int, default=4)
     parser.add_argument('--max_seq_len', type=int, default=64)
-    parser.add_argument('--dropout', type=float, default=0.1)
+    parser.add_argument('--dropout', type=float, default=0.3)
+    parser.add_argument('--augment', action='store_true', help='启用数据增强')
     parser.add_argument('--output_json', type=str, default=None)
     args = parser.parse_args()
 
@@ -346,6 +370,7 @@ def main():
         'dim': args.dim, 'depth': args.depth, 'heads': args.heads,
         'mlp_dim': args.dim * 2, 'max_seq_len': args.max_seq_len,
         'dropout': args.dropout, 'weight_decay': 0.01,
+        'augment': args.augment,
         'subjects': args.subjects,
     }
 
